@@ -190,14 +190,15 @@ func solve(file string) {
 	// if a change has not occured in this loop, can't solve the puzzle.
 	// with this strategy, and try brute force (step 2)
 	//
-	// step 2: brute force
+	// step 2: brute force substitution
 	// for each cell that has only two values, push a copy of the puzzle
 	// on stack and, assign one of the two values and try to solve it using
 	// elimination (step 1).  that doesn't succeed, pop the stack, try the second
 	// value by assinging it, pushing that copy of the puzzle on the stack and
-	// trying to solve it.  If all values are exhusted without success, the puzzle
-	// can't be solved.
+	// trying to solve it. substituted values that aren't correct will result
+	// in impossible values for cells and will be abandoned.
 
+	// step 1: elimination
 	puzzle, _, impossible := elimination(puzzle)
 	if impossible {
 		log.Fatal("Puzzle can't be solved")
@@ -207,12 +208,13 @@ func solve(file string) {
 	printPuzzle(puzzle)
 	fmt.Println("Solution:")
 
-	// lastly, bruteforce try all 2,3,4-possibility cells, retracting
-	// when it doesn't work.
-	// use a stack to push and pop alternates or use a binary
-	// true with recursion to try
+	// step2: substitution
+	// try all 2,3,4...-possibility cells, retracting when it doesn't work.
+	// use recursion to try the branches; could use a stack implementation
+	// but recursion is easier to sort out.  elimination and substitution
+	// are used
 	if unknownCount(puzzle) != 0 {
-		puzzle, impossible = bruteforce(puzzle, 2)
+		puzzle, impossible = substitution(puzzle, 2)
 	}
 
 	if impossible {
@@ -391,7 +393,7 @@ func removeslots(set tuple, ea, eb int) bool {
 		}
 	}
 
-	// log.Println("removeslots: ", found, count)
+	log.Println("removeslots: ", found, count)
 	return found
 }
 
@@ -399,9 +401,10 @@ func removeslots(set tuple, ea, eb int) bool {
 // if there is only one possible value, assign it and return true. if there
 // are zero possibles, then return impossible.
 func checkCell(puzzle board, i, j int) (changed, impossible bool) {
-	// openslots := puzzle[i][j].possible()
-	// s := strconv.FormatInt(int64(openslots), 2)
-	// log.Printf("row/col/box check cell(%d, %d), value %d, possibles %s\n", i, j, puzzle[i][j].value(), s)
+	openslots := puzzle[i][j].possible()
+	s := strconv.FormatInt(int64(openslots), 2)
+	log.Printf("row/col/box check cell(%d, %d), value %d, possibles %s\n", i, j, puzzle[i][j].value(), s)
+
 	possibles := bitcount(puzzle[i][j].possible())
 	if possibles < 2 {
 		return
@@ -419,24 +422,25 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 		possibles = findpossibles(tr, j)
 	}
 
-	openslots := puzzle[i][j].possible()
-	// s := strconv.FormatInt(int64(openslots), 2)
-	// log.Printf("after row,col,box check cell(%d,%d) possibles: %s\n", i, j, s)
+	openslots = puzzle[i][j].possible()
+	s = strconv.FormatInt(int64(openslots), 2)
+	log.Printf("after row,col,box check cell(%d,%d) possibles: %s\n", i, j, s)
 
 	switch possibles {
 	case 0: // impossible
-		log.Println("solution impossible")
+		log.Println("case 0: solution impossible")
 		impossible = true
 		return
 
 	case 1: // single value, assign it, turn off all possibles
 		val := bitvalue(openslots)
 		puzzle[i][j].setvalue(val)
-		// log.Printf("case 1 possible: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+		log.Printf("case 1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 		changed = true
 		return
 
 	case 2: // exactly two possible values
+		log.Println("case 2: search")
 		ok, jj := findmatching(tr, j)
 		if ok {
 			// remove the 2 matching values in j and jj from other slots
@@ -472,7 +476,7 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 		for n := 1; pb != 0; n++ {
 			if pb&1 == 1 && !hasval(tr, j, n) && !hasval(tc, i, n) && !hasval(tb, 0, n) {
 				puzzle[i][j].setvalue(n)
-				// log.Printf("default case #1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+				log.Printf("default: #1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 				changed = true
 				return
 			}
@@ -486,7 +490,7 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 			bit := ur & uc & ub
 			if bitcount(bit) == 1 {
 				puzzle[i][j].setvalue(bitvalue(bit))
-				// log.Printf("default case #2: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+				log.Printf("default: #2: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 				changed = true
 				return
 			}
@@ -515,11 +519,13 @@ func findOne(puzzle board) (changed, impossible bool) {
 	return false, false
 }
 
-// brute force: for every cell that has npossibles, try to
+// substitution: for every cell that has npossibles, try to
 // solve the puzzle by trying each of the possible values and
-// restart elimination and if needed bruteforce
-func bruteforce(puzzle board, npossibles int) (pz board, impossible bool) {
-	log.Println("bruteforce: ", npossibles)
+// restart elimination and if needed more substitution. try
+// higher values of npossibles up to the maximum 9, if the
+// puzzle is unsolved.
+func substitution(puzzle board, npossibles int) (pz board, impossible bool) {
+	log.Printf("substitution of %d possibles", npossibles)
 	if npossibles > 9 {
 		return pz, true
 	}
@@ -542,7 +548,7 @@ func bruteforce(puzzle board, npossibles int) (pz board, impossible bool) {
 						continue
 					}
 					if changed {
-						pz, impossible = bruteforce(pz, npossibles)
+						pz, impossible = substitution(pz, npossibles)
 						if impossible {
 							pz = replicate(puzzle)
 						}
@@ -554,7 +560,7 @@ func bruteforce(puzzle board, npossibles int) (pz board, impossible bool) {
 
 	if unknownCount(pz) != 0 {
 		npossibles++
-		pz, impossible = bruteforce(pz, npossibles)
+		pz, impossible = substitution(pz, npossibles)
 	}
 
 	return pz, impossible
