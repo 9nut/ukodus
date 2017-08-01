@@ -1,3 +1,4 @@
+// Copyright © 2017 Skip Tavakkolian
 package main
 
 import (
