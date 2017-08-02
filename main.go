@@ -141,7 +141,6 @@ func replicate(p1 board) (p2 board) {
 }
 
 func main() {
-	file := flag.String("s", "./boards/s16.txt", "puzzle file name")
 	debug := flag.Bool("d", false, "enable logging trace")
 
 	flag.Parse()
@@ -151,7 +150,10 @@ func main() {
 		log.SetOutput(os.Stderr)
 	}
 
-	solve(*file)
+	files := flag.Args()
+	for _, file := range files {
+		solve(file)
+	}
 }
 
 func solve(file string) {
