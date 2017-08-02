@@ -144,13 +144,12 @@ func main() {
 	file := flag.String("s", "./boards/s16.txt", "puzzle file name")
 	debug := flag.Bool("d", false, "enable logging trace")
 
+	flag.Parse()
+
+	log.SetOutput(ioutil.Discard)
 	if *debug {
 		log.SetOutput(os.Stderr)
-	} else {
-		log.SetOutput(ioutil.Discard)
 	}
-
-	flag.Parse()
 
 	solve(*file)
 }
