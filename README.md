@@ -12,8 +12,13 @@ same finite set of strategies.
 
 ## usage
 
-`./ukodus [-d] puzzle [puzzle...]`
+`./ukodus [-d] [-9] puzzle [puzzle...]`
 
-e.g.
+Use `-d` to see a trace of the program as it solves puzzles.
+Some Sudoku games, like the one on Plan 9, use a different storage
+format for the puzzle. To use that format, include the `-9` flag.
+
+## example
 
 `./ukodus boards/s16.txt`
+
