@@ -56,7 +56,14 @@ func (c *cell) assign(rhs *cell) {
 	*c = *rhs
 }
 
-func parseboard(description string) (puzzle board, unk int, err error) {
+func parseboard(description string, p9format bool) (board, error) {
+	if p9format {
+		return parseColumnRow(description)
+	}
+	return parseRowColumn(description)
+}
+
+func parseRowColumn(description string) (puzzle board, err error) {
 	lines := strings.Split(description, "\n")
 	if len(lines) < 9 {
 		err = errors.New("not enough rows")
@@ -78,13 +85,13 @@ func parseboard(description string) (puzzle board, unk int, err error) {
 				nc := new(cell)
 				nc.setvalue(0)
 				puzzle[r][c] = nc
-				unk++
+
 			case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 				nc := new(cell)
 				nc.setvalue(int(x[0]) - int('0'))
 				puzzle[r][c] = nc
 			default:
-				err = errors.New("bad puzzle value row: " + string(r) + " col: " + string(c))
+				err = errors.New(fmt.Sprintf("bad puzzle value row: %d col: %d", r, c))
 				return
 			}
 		}
@@ -92,7 +99,7 @@ func parseboard(description string) (puzzle board, unk int, err error) {
 	return
 }
 
-func parseboardPlan9(description string) (puzzle board, unk int, err error) {
+func parseColumnRow(description string) (puzzle board, err error) {
 	lines := strings.Split(description, "\n")
 	if len(lines) < 9 {
 		err = errors.New("not enough rows")
@@ -114,13 +121,12 @@ func parseboardPlan9(description string) (puzzle board, unk int, err error) {
 				nc := new(cell)
 				nc.setvalue(0)
 				puzzle[r][c] = nc
-				unk++
 			case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 				nc := new(cell)
 				nc.setvalue(int(x[0]) - int('0'))
 				puzzle[r][c] = nc
 			default:
-				err = errors.New("bad puzzle value row: " + string(r) + " col: " + string(c))
+				err = errors.New(fmt.Sprintf("bad puzzle value row: %d col: %d", r, c))
 				return
 			}
 		}
@@ -142,6 +148,7 @@ func replicate(p1 board) (p2 board) {
 
 func main() {
 	debug := flag.Bool("d", false, "enable logging trace")
+	plan9 := flag.Bool("9", false, "Plan 9 Sudoku puzzle format")
 
 	flag.Parse()
 
@@ -152,63 +159,67 @@ func main() {
 
 	files := flag.Args()
 	for _, file := range files {
-		solve(file)
+		sudoku, err := ioutil.ReadFile(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		puzzle, err := parseboard(string(sudoku), *plan9)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println("Puzzle: ", file)
+
+		solution, impossible := solve(puzzle)
+		if impossible {
+			fmt.Printf("%s: solution isn't possible\n", file)
+		} else {
+			fmt.Printf("%s: is solved? %t\n", file, unknownCount(solution) == 0)
+		}
 	}
 }
 
-func solve(file string) {
-	sudoku, err := ioutil.ReadFile(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	puzzle, unknowns, err := parseboard(string(sudoku))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Puzzle: ", file)
+// strategy
+// step 1: eliminiation
+// clear a flag that notes if a change has happened.
+// descending order ofnumber of hints given; the more hints, the
+// earlier in the list].
+//
+// 1. traverse all the unassigned cells and create a list of possible
+// values for based on the row, column and box tuples; e.g. cell(2,2)
+// has a row tuple board[2][:], a column tuple board[:][2] and a
+// box tuple board[1:3][1:3].
+//
+// - if there is only one possible value, assign the value to cell,
+// note that a change has happened and start over.
+//
+// - if there are exactly two values, search its column, row and
+// box tuples for the same exact two values;
+// - if there is a match eliminate those values from the coresponding
+// col, row or box cells, note the change and start over.
+//
+// if a change has not occured in this loop, can't solve the puzzle.
+// with this strategy, and try brute force (step 2)
+//
+// step 2: brute force substitution
+// for each cell that has only two values, push a copy of the puzzle
+// on stack and, assign one of the two values and try to solve it using
+// elimination (step 1).  that doesn't succeed, pop the stack, try the second
+// value by assinging it, pushing that copy of the puzzle on the stack and
+// trying to solve it. substituted values that aren't correct will result
+// in impossible values for cells and will be abandoned.
+func solve(puzzle board) (board, bool) {
 	printPuzzle(puzzle)
-
-	// strategy
-	// step 1: eliminiation
-	// clear a flag that notes if a change has happened.
-	// descending order ofnumber of hints given; the more hints, the
-	// earlier in the list].
-	//
-	// 1. traverse all the unassigned cells and create a list of possible
-	// values for based on the row, column and box tuples; e.g. cell(2,2)
-	// has a row tuple board[2][:], a column tuple board[:][2] and a
-	// box tuple board[1:3][1:3].
-	//
-	// - if there is only one possible value, assign the value to cell,
-	// note that a change has happened and start over.
-	//
-	// - if there are exactly two values, search its column, row and
-	// box tuples for the same exact two values;
-	// - if there is a match eliminate those values from the coresponding
-	// col, row or box cells, note the change and start over.
-	//
-	// if a change has not occured in this loop, can't solve the puzzle.
-	// with this strategy, and try brute force (step 2)
-	//
-	// step 2: brute force substitution
-	// for each cell that has only two values, push a copy of the puzzle
-	// on stack and, assign one of the two values and try to solve it using
-	// elimination (step 1).  that doesn't succeed, pop the stack, try the second
-	// value by assinging it, pushing that copy of the puzzle on the stack and
-	// trying to solve it. substituted values that aren't correct will result
-	// in impossible values for cells and will be abandoned.
-
+	unknowns := unknownCount(puzzle)
 	// step 1: elimination
 	puzzle, _, impossible := elimination(puzzle)
 	if impossible {
-		log.Fatal("Puzzle can't be solved")
+		return puzzle, impossible
 	}
 
-	fmt.Println("Stage1: ", unknowns-unknownCount(puzzle), "/", unknowns)
+	fmt.Println("After step1: ", unknowns-unknownCount(puzzle), "/", unknowns)
 	printPuzzle(puzzle)
-	fmt.Println("Solution:")
 
 	// step2: substitution
 	// try all 2,3,4...-possibility cells, retracting when it doesn't work.
@@ -219,12 +230,11 @@ func solve(file string) {
 		puzzle, impossible = substitution(puzzle, 2)
 	}
 
-	if impossible {
-		log.Fatal("Puzzle can't be solved")
-	}
-
-	fmt.Println("Stage2: ", unknowns-unknownCount(puzzle), "/", unknowns)
+	fmt.Println("After step2: ", unknowns-unknownCount(puzzle), "/", unknowns)
+	fmt.Println("Solution:")
 	printPuzzle(puzzle)
+
+	return puzzle, impossible
 }
 
 // eliminate all hints to discover cell values
@@ -254,16 +264,6 @@ func printPuzzle(puzzle board) {
 			v := puzzle[i][j]
 			s := strconv.FormatInt(int64(v.possible()), 2)
 			fmt.Printf("%d(%09s) ", v.value(), s)
-		}
-		fmt.Println("]")
-	}
-}
-
-func printSolution(solution [9][9]int) {
-	for i := 0; i < 9; i++ {
-		fmt.Print("[")
-		for j := 0; j < 9; j++ {
-			fmt.Printf("%d(%09s) ", solution[i][j], "")
 		}
 		fmt.Println("]")
 	}
