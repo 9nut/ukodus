@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/profile"
 )
 
 // cell type uses the lowest 5 bits for value of the cell, 0 meaning
@@ -24,6 +26,10 @@ func (c *cell) value() int {
 
 func (c *cell) possible() int {
 	return (int(*c) >> 5) & 0x1ff
+}
+
+func (c *cell) pcount() int {
+	return bitcount((int(*c) >> 5) & 0x1ff)
 }
 
 func (c *cell) slotisset(p uint) bool {
@@ -149,12 +155,16 @@ func replicate(p1 board) (p2 board) {
 func main() {
 	debug := flag.Bool("d", false, "enable logging trace")
 	plan9 := flag.Bool("9", false, "Plan 9 Sudoku puzzle format")
+	pprof := flag.Bool("p", false, "enable pprof")
 
 	flag.Parse()
 
 	log.SetOutput(ioutil.Discard)
 	if *debug {
 		log.SetOutput(os.Stderr)
+	}
+	if *pprof {
+		defer profile.Start().Stop()
 	}
 
 	files := flag.Args()
@@ -278,8 +288,8 @@ func findpossibles(set tuple, elem int) int {
 			set[elem].clearslot(uint(v.value()))
 		}
 	}
-	openslots := set[elem].possible()
-	return bitcount(openslots)
+	// openslots := set[elem].possible()
+	return set[elem].pcount()
 }
 
 // check to see if cells in tuple other than elem have
@@ -387,7 +397,7 @@ func removeslots(set tuple, ea, eb int) bool {
 					v.clearslot(uint(s))
 				}
 			}
-			if bitcount(v.possible()) == 1 {
+			if v.pcount() == 1 {
 				v.setvalue(bitvalue(v.possible()))
 				found = true
 				count++
@@ -395,7 +405,7 @@ func removeslots(set tuple, ea, eb int) bool {
 		}
 	}
 
-	log.Println("removeslots: ", found, count)
+	// log.Println("removeslots: ", found, count)
 	return found
 }
 
@@ -404,10 +414,10 @@ func removeslots(set tuple, ea, eb int) bool {
 // are zero possibles, then return impossible.
 func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 	openslots := puzzle[i][j].possible()
-	s := strconv.FormatInt(int64(openslots), 2)
-	log.Printf("row/col/box check cell(%d, %d), value %d, possibles %s\n", i, j, puzzle[i][j].value(), s)
+	// s := strconv.FormatInt(int64(openslots), 2)
+	// log.Printf("row/col/box check cell(%d, %d), value %d, possibles %s\n", i, j, puzzle[i][j].value(), s)
 
-	possibles := bitcount(puzzle[i][j].possible())
+	possibles := bitcount(openslots)
 	if possibles < 2 {
 		return
 	}
@@ -425,24 +435,24 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 	}
 
 	openslots = puzzle[i][j].possible()
-	s = strconv.FormatInt(int64(openslots), 2)
-	log.Printf("after row,col,box check cell(%d,%d) possibles: %s\n", i, j, s)
+	// s = strconv.FormatInt(int64(openslots), 2)
+	// log.Printf("after row,col,box check cell(%d,%d) possibles: %s\n", i, j, s)
 
 	switch possibles {
 	case 0: // impossible
-		log.Println("case 0: solution impossible")
+		// log.Println("case 0: solution impossible")
 		impossible = true
 		return
 
 	case 1: // single value, assign it, turn off all possibles
 		val := bitvalue(openslots)
 		puzzle[i][j].setvalue(val)
-		log.Printf("case 1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+		// log.Printf("case 1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 		changed = true
 		return
 
 	case 2: // exactly two possible values
-		log.Println("case 2: search")
+		// log.Println("case 2: search")
 		ok, jj := findmatching(tr, j)
 		if ok {
 			// remove the 2 matching values in j and jj from other slots
@@ -478,7 +488,7 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 		for n := 1; pb != 0; n++ {
 			if pb&1 == 1 && !hasval(tr, j, n) && !hasval(tc, i, n) && !hasval(tb, 0, n) {
 				puzzle[i][j].setvalue(n)
-				log.Printf("default: #1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+				// log.Printf("default: #1: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 				changed = true
 				return
 			}
@@ -492,7 +502,7 @@ func checkCell(puzzle board, i, j int) (changed, impossible bool) {
 			bit := ur & uc & ub
 			if bitcount(bit) == 1 {
 				puzzle[i][j].setvalue(bitvalue(bit))
-				log.Printf("default: #2: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
+				// log.Printf("default: #2: changed cell(%d,%d) to %d\n", i, j, puzzle[i][j].value())
 				changed = true
 				return
 			}
@@ -580,12 +590,22 @@ func unknownCount(puzzle board) (unknowns int) {
 }
 
 func bitcount(bv int) (count int) {
-	for bv != 0 {
-		if bv&0x1 != 0 {
-			count++
+	/*
+		for bv != 0 {
+			if bv&0x1 != 0 {
+				count++
+			}
+			bv >>= 1
 		}
-		bv >>= 1
-	}
+	*/
+	// because pprof
+	// Figure 5-2, Hacker's Delight -- Warren
+	bv = bv - ((bv >> 1) & 0x55555555)
+	bv = (bv & 0x33333333) + ((bv >> 2) & 0x33333333)
+	bv = (bv + (bv >> 4)) & 0x0F0F0F0F
+	bv = bv + (bv >> 8)
+	bv = bv + (bv >> 16)
+	count = bv & 0x3F
 	return
 }
 
