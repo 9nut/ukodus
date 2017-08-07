@@ -12,11 +12,12 @@ same finite set of strategies.
 
 ## usage
 
-`./ukodus [-d] [-9] puzzle [puzzle...]`
+`./ukodus [-d] [-9] [-p] puzzle [puzzle...]`
 
-Use `-d` to see a trace of the program as it solves puzzles.
-Some Sudoku games, like the one on Plan 9, use a different storage
-format for the puzzle. To use that format, include the `-9` flag.
+Use `-d` to see a trace of the program as it solves puzzles. Use `-p`
+to enable `pprof` profiling. Some Sudoku games, like the one on Plan
+9, use a different storage format for the puzzle. To use that format,
+include the `-9` flag.
 
 ## example
 
